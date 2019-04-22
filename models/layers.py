@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import numpy as np
-import bilateral_slice
+# import bilateral_slice
 
 
 def conv(in_channels, out_channels, kernel, stride=1, norm=False, bias=True, relu=True,

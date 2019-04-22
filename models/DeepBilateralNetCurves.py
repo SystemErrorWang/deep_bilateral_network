@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
-from models.layers import conv, fc, BilateralSliceFunction
+from models.layers import conv, fc
 
 
 class DeepBilateralNetCurves(nn.Module):
@@ -20,20 +20,23 @@ class DeepBilateralNetCurves(nn.Module):
         self.coefficient_params = self.make_coefficient_params(lowres)
         self.guide_params = self.make_guide_params()
 
-    def forward(self, image_lowres, image_fullres):
-        coefficients = self.forward_coefficients(image_lowres)
+    def forward(self, image_fullres):
+        # NOTE(brendan): uncomment to save coefficients
+        # coefficients = self.forward_coefficients(image_lowres)
+        # output = coefficients
         guidemap = self.forward_guidemap(image_fullres)
-        output = BilateralSliceFunction.apply(coefficients, guidemap, image_fullres, True)
-        if not self.training:
-            output = F.hardtanh(output, min_val=0, max_val=1)
+        output = guidemap
+        # output = BilateralSliceFunction.apply(coefficients, guidemap, image_fullres, True)
+        # if not self.training:
+        #     output = F.hardtanh(output, min_val=0, max_val=1)
         return output
 
     def forward_coefficients(self, image_lowres):
         splat_features = self.coefficient_params.splat(image_lowres)
         global_features = self.coefficient_params.global_conv(splat_features)
-        global_features = global_features.view(image_lowres.shape[0], -1)
+        global_features = global_features.view(image_lowres.data.shape[0], -1)
         global_features = self.coefficient_params.global_fc(global_features)
-        global_features = global_features.view(image_lowres.shape[0], global_features.shape[1], 1, 1)
+        global_features = global_features.view(image_lowres.data.shape[0], global_features.data.shape[1], 1, 1)
         local_features = self.coefficient_params.local(splat_features)
         fusion = F.relu(global_features + local_features)
         coefficients = self.coefficient_params.prediction(fusion)
@@ -42,11 +45,11 @@ class DeepBilateralNetCurves(nn.Module):
 
     def forward_guidemap(self, image_fullres):
         guidemap = self.guide_params.ccm(image_fullres)
-        guidemap = guidemap.unsqueeze(dim=4)
-        guidemap = (self.guide_params.slopes * F.relu(guidemap - self.guide_params.shifts)).sum(dim=4)
+        # guidemap = guidemap.unsqueeze(dim=4)
+        # guidemap = (self.guide_params.slopes * F.relu(guidemap - self.guide_params.shifts)).sum(dim=4)
         guidemap = self.guide_params.projection(guidemap)
         guidemap = F.hardtanh(guidemap, min_val=0, max_val=1)
-        guidemap = guidemap.squeeze(dim=1)
+        # guidemap = guidemap.squeeze(dim=1)
         return guidemap
 
     def make_coefficient_params(self, lowres):
@@ -66,7 +69,7 @@ class DeepBilateralNetCurves(nn.Module):
         for _ in range(int(np.log2(self.spatial_bin / 4))):
             global_conv.append(conv(in_channels, 8 * self.feature_multiplier, 3, stride=2, norm=self.norm))
             in_channels = 8 * self.feature_multiplier
-        global_conv.append(nn.AdaptiveAvgPool2d(4))
+        # global_conv.append(nn.AdaptiveAvgPool2d(4))
         global_conv = nn.Sequential(*global_conv)
         global_fc = nn.Sequential(fc(128 * self.feature_multiplier, 32 * self.feature_multiplier, norm=self.norm),
                                   fc(32 * self.feature_multiplier, 16 * self.feature_multiplier, norm=self.norm),
